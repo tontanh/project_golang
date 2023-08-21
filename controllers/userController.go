@@ -167,11 +167,19 @@ func UpdateAllTokens(signedToken string, signedRefreshToken string, userId strin
 	updateObj = append(updateObj, bson.E{Key: "updated_at", Value: Updated_at})
 	// updateObj = append(updateObj, bson.E{"updated_at", Updated_at})
 	upsert := true
-
+	///////////////////////		------------
 	filter := bson.M{"user_id": userId}
 	opt := options.UpdateOptions{
 		Upsert: &upsert,
 	}
+	var auth models.Authentication
+	errAuth := tokenCollection.FindOne(ctx, filter).Decode(&auth)
+	defer cancel()
+	if errAuth != nil {
+		log.Panic(errAuth)
+		return
+	}
+	fmt.Println(filter)
 	_, err := userCollection.UpdateOne(
 		ctx, filter, bson.D{
 			{Key: "$set", Value: updateObj},
