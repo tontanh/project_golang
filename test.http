@@ -10,7 +10,8 @@ content-type: application/json
 
 {
     "Password": "12345678",
-    "Email": "admin@gdmail.com"
+    "Email": "admin@gdmail.com",
+    "User_agent": "iphone 1666 "
 }
 ### signup
 POST http://localhost:3000/users/signup HTTP/1.1
@@ -24,6 +25,10 @@ content-type: application/json
     "Phone":"123456",
     "User_type":"ADMIN"
 }
+### get user by id 
+GET http://localhost:3000/users/64e1d2f4497bde62a9736bb2 HTTP/1.1
+Content-Type: application/json
+token 
 ### get list
 GET http://localhost:3000/users HTTP/1.1
 Content-Type: application/json
