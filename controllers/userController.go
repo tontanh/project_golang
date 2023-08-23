@@ -133,13 +133,13 @@ func Login() gin.HandlerFunc {
 		if errToken != nil {
 			if errToken == mongo.ErrNoDocuments {
 				InsertAllTokens(accessToken, refreshToken, foundUser.User_id, &loginInput.Uuid, &loginInput.User_agent, &loginInput.Device_token)
-				fmt.Println("Document not found")
+				// fmt.Println("Document not found")
 			} else {
 				fmt.Println("Error:", errToken)
 			}
 		} else {
 			if *foundAuth.User_agent == loginInput.User_agent {
-				fmt.Println("=============  equal ===========")
+				// fmt.Println("=============  equal ===========")
 				UpdateAllTokens(accessToken, refreshToken, foundUser.User_id, loginInput.Uuid, loginInput.User_agent, loginInput.Device_token)
 			}
 		}
@@ -304,5 +304,38 @@ func GetUsers() gin.HandlerFunc {
 func GetUsersPublic() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusOK, bson.M{"message": "get public"})
+	}
+}
+func GetAccessToken() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var foundAuth models.Authentication
+		var loginInput models.LoginInput
+		var foundUser models.User
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+		if err := c.BindJSON(&loginInput); err != nil {
+			c.JSON(http.StatusInternalServerError, constant.ErrMsg(err.Error()))
+			return
+		}
+		errToken := tokenCollection.FindOne(ctx, bson.M{"refresh_token": loginInput.Refresh_token}).Decode(&foundAuth)
+		defer cancel()
+		if errToken != nil {
+			fmt.Println("Refresh token not found")
+			c.JSON(http.StatusInternalServerError, constant.ErrMsg("Refresh token not found"))
+			return
+		} else {
+			fmt.Println("Refresh token  found")
+			errUser := userCollection.FindOne(ctx, bson.M{"user_id": foundAuth.User_id}).Decode(&foundUser)
+			defer cancel()
+			if errUser != nil {
+				fmt.Println("user not found")
+				c.JSON(http.StatusInternalServerError, constant.ErrMsg("user not found"))
+				return
+			}
+			accessToken, refreshToken, _ := helper.GenerateAllTokens(*foundUser.Email, *foundUser.First_name, *foundUser.Last_name, *foundUser.User_type, *&foundUser.User_id)
+			UpdateAllTokens(accessToken, refreshToken, foundUser.User_id, *foundAuth.Uuid, *foundAuth.User_agent, *foundAuth.Device_token)
+			c.JSON(http.StatusOK, bson.M{"access_token": accessToken, "refresh_token": refreshToken})
+		}
+
 	}
 }
