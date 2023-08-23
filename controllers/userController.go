@@ -25,13 +25,6 @@ var userCollection *mongo.Collection = database.OpenCollection(database.Client, 
 var tokenCollection *mongo.Collection = database.OpenCollection(database.Client, constant.TokenCollection)
 var validate = validator.New()
 
-//	func HashPassword(password string) string {
-//		bcrypt.GenerateFromPassword([]byte(password), 14)
-//		if err != nil {
-//			log.Panic(err)
-//		}
-//		return string(byte)
-//	}
 func HashPassword(password string) string {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -88,10 +81,10 @@ func SignUp() gin.HandlerFunc {
 		user.UpdateAt, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		user.Id = primitive.NewObjectID()
 		user.User_id = user.Id.Hex()
-		token, refreshToken, _ := helper.GenerateAllTokens(*user.Email, *user.First_name, *user.Last_name, *user.User_type, *&user.User_id)
-		// user.Token = &token
-		// user.Refresh_token = &refreshToken
-		InsertTokens(token, refreshToken, user.User_id)
+		accessToken, refreshToken, _ := helper.GenerateAllTokens(*user.Email, *user.First_name, *user.Last_name, *user.User_type, *&user.User_id)
+		// InsertTokens(token, refreshToken, user.User_id)
+		register := "registered"
+		InsertAllTokens(accessToken, refreshToken, user.User_id, &register, &register, &register)
 		resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
 		if insertErr != nil {
 			msg := fmt.Sprintf("User item was not created")
@@ -118,7 +111,7 @@ func Login() gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, constant.ErrMsg("email or password is incorrect"))
 			return
 		}
-		passwordValid, msg := VerifyPassword(*loginInput.Password, *foundUser.Password)
+		passwordValid, msg := VerifyPassword(loginInput.Password, *foundUser.Password)
 		defer cancel()
 		if passwordValid != true {
 			c.JSON(http.StatusInternalServerError, constant.ErrMsg(msg))
@@ -127,39 +120,36 @@ func Login() gin.HandlerFunc {
 		if foundUser.Email == nil {
 			c.JSON(http.StatusInternalServerError, constant.ErrMsg("user not found"))
 		}
-		token, refreshToken, _ := helper.GenerateAllTokens(*foundUser.Email, *foundUser.First_name, *foundUser.Last_name, *foundUser.User_type, *&foundUser.User_id)
-		// check new device
-		errAuth := tokenCollection.FindOne(ctx, bson.M{"user_id": foundUser.User_id}).Decode(&foundAuth)
-		defer cancel()
-		if errAuth != nil {
-			c.JSON(http.StatusInternalServerError, constant.ErrMsg("Unknown access authorize"))
-			log.Panic(errAuth)
-			return
-		}
 		// check User-Agent
 		userAgent := c.Request.Header.Get("User-Agent")
 		if userAgent == "" {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("No User-Agent header provider")})
 			return
 		}
-		*loginInput.User_agent = userAgent
-		if foundAuth.User_agent == nil || foundAuth.User_agent == loginInput.User_agent {
-			UpdateAllTokens(token, refreshToken, foundUser.User_id, loginInput.Uuid, loginInput.User_agent, loginInput.Device_token)
+		loginInput.User_agent = userAgent
+		accessToken, refreshToken, _ := helper.GenerateAllTokens(*foundUser.Email, *foundUser.First_name, *foundUser.Last_name, *foundUser.User_type, *&foundUser.User_id)
+		// check new device
+		errToken := tokenCollection.FindOne(ctx, bson.M{"user_id": foundUser.User_id, "user_agent": userAgent}).Decode(&foundAuth)
+		if errToken != nil {
+			if errToken == mongo.ErrNoDocuments {
+				InsertAllTokens(accessToken, refreshToken, foundUser.User_id, &loginInput.Uuid, &loginInput.User_agent, &loginInput.Device_token)
+				fmt.Println("Document not found")
+			} else {
+				fmt.Println("Error:", errToken)
+			}
+		} else {
+			if *foundAuth.User_agent == loginInput.User_agent {
+				fmt.Println("=============  equal ===========")
+				UpdateAllTokens(accessToken, refreshToken, foundUser.User_id, loginInput.Uuid, loginInput.User_agent, loginInput.Device_token)
+			}
 		}
-		// if *foundAuth.User_agent != userAgent {
-		// 	InsertAllTokens(token, refreshToken, foundUser.User_id, loginInput.Uuid, loginInput.User_agent, loginInput.Device_token)
-		// }
-		// if *foundAuth.User_agent != userAgent {
-		// 	InsertAllTokens(token, refreshToken, foundUser.User_id, loginInput.Uuid, loginInput.User_agent, loginInput.Device_token)
-		// }
-		// fmt.Println(userAgent)
 		////
 		userCollection.FindOne(ctx, bson.M{"user_id": foundUser.User_id}).Decode(&foundUser)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, constant.ErrMsg(err.Error()))
 			return
 		}
-		c.JSON(http.StatusOK, bson.M{"data": foundUser, "token": &foundAuth.Token, "refreshToken": &foundAuth.Refresh_token})
+		c.JSON(http.StatusOK, bson.M{"data": foundUser, "accessToken": accessToken, "refreshToken": refreshToken})
 		return
 	}
 }
@@ -182,10 +172,10 @@ func GetUser() gin.HandlerFunc {
 	}
 }
 
-func UpdateAllTokens(signedToken string, signedRefreshToken string, userId string, uuid *string, userAgent *string, deviceToken *string) {
+func UpdateAllTokens(signedToken string, signedRefreshToken string, userId string, uuid string, userAgent string, deviceToken string) {
 	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 	var updateObj primitive.D
-	updateObj = append(updateObj, bson.E{Key: "token", Value: signedToken})
+	updateObj = append(updateObj, bson.E{Key: "access_token", Value: signedToken})
 	updateObj = append(updateObj, bson.E{Key: "refresh_token", Value: signedRefreshToken})
 	Updated_at, _ := time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 	updateObj = append(updateObj, bson.E{Key: "updateat", Value: Updated_at})
@@ -194,7 +184,7 @@ func UpdateAllTokens(signedToken string, signedRefreshToken string, userId strin
 	updateObj = append(updateObj, bson.E{Key: "device_token", Value: deviceToken})
 	upsert := true
 	///////////////////////
-	filter := bson.M{"user_id": userId}
+	filter := bson.M{"user_id": userId, "user_agent": userAgent}
 	opt := options.UpdateOptions{
 		Upsert: &upsert,
 	}
@@ -219,7 +209,7 @@ func InsertAllTokens(signedToken string, signedRefreshToken string, userId strin
 	authentication.Device_token = deviceToken
 	authentication.User_agent = userAgent
 	authentication.Uuid = uuid
-	authentication.Token = &signedToken
+	authentication.Access_token = &signedToken
 	authentication.Refresh_token = &signedRefreshToken
 	authentication.CreateAt, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 	authentication.UpdateAt, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
@@ -238,7 +228,7 @@ func InsertTokens(signedToken string, signedRefreshToken string, userId string) 
 	authentication.Id = primitive.NewObjectID()
 	authentication.Auth_id = authentication.Id.Hex()
 	authentication.User_id = userId
-	authentication.Token = &signedToken
+	authentication.Access_token = &signedToken
 	authentication.Refresh_token = &signedRefreshToken
 	authentication.CreateAt, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 	authentication.UpdateAt, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))

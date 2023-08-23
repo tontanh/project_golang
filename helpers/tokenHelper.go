@@ -42,8 +42,8 @@ func GenerateAllTokens(email string, firstName string, lastName string, userType
 		},
 	}
 	// token
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, err = token.SignedString(secretKey)
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signedToken, err = accessToken.SignedString(secretKey)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return

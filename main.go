@@ -21,7 +21,7 @@ func main() {
 	}
 
 	// Set Gin to run in release mode
-	// gin.SetMode(gin.ReleaseMode)
+	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	// Use the CORS middleware to allow all origins.
 	router.Use(helper.CorsMiddleware())

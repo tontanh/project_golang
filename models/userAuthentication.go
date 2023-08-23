@@ -11,7 +11,7 @@ type Authentication struct {
 	Auth_id       string             `json:"auth_id"`
 	Uuid          *string            `json:"uuid"`
 	User_agent    *string            `json:"user_agent"`
-	Token         *string            `json:"token"`
+	Access_token  *string            `json:"access_token"`
 	Refresh_token *string            `json:"refresh_token"`
 	Device_token  *string            `json:"device_token"`
 	Ip_address    *string            `json:"ip_address"`

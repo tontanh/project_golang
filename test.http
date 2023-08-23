@@ -10,8 +10,7 @@ content-type: application/json
 
 {
     "Password": "12345678",
-    "Email": "admin@gdmail.com",
-    "User_agent": "iphone 1666 "
+    "Email": "admin@gdmail.com"
 }
 ### signup
 POST http://localhost:3000/users/signup HTTP/1.1
